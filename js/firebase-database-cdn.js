@@ -513,15 +513,26 @@ class FirebaseDatabase {
   // ===== أعمال الصيانة =====
   async addMaintenanceJob(jobData) {
     try {
-      // ✅ حساب الأرباح باستخدام الدالة الموحدة
+      // ✅ حساب totalPartCost من البنية الجديدة أو القديمة
+      let totalPartCost = 0;
+      if (jobData.parts && Array.isArray(jobData.parts) && jobData.parts.length > 0) {
+        totalPartCost = jobData.parts.reduce((sum, part) => sum + (Number(part.partCost) || 0), 0);
+      } else if (jobData.totalPartCost !== undefined && jobData.totalPartCost !== null) {
+        totalPartCost = Number(jobData.totalPartCost) || 0;
+      } else if (jobData.partCost !== undefined && jobData.partCost !== null) {
+        totalPartCost = Number(jobData.partCost) || 0; // للتوافق مع البيانات القديمة
+      }
+
+      // ✅ حساب الأرباح باستخدام الدالة الموحدة مع totalPartCost
       const { profit, techCommission, shopProfit } = this.computeDerived(
-        jobData.partCost, 
+        totalPartCost, 
         jobData.amountCharged, 
         jobData.techPercent !== undefined ? jobData.techPercent : 0
       );
 
       const docRef = await addDoc(collection(this.db, 'maintenanceJobs'), {
         ...jobData,
+        totalPartCost, // ✅ حفظ totalPartCost للتأكد من وجوده في المستقبل
         profit,
         techCommission,
         shopProfit,
@@ -542,71 +553,71 @@ class FirebaseDatabase {
       let q = collection(this.db, 'maintenanceJobs');
       
       // بناء الاستعلام الأساسي (بدون repId لأنه قد يكون في parts[])
-      if (filters.status) {
-        q = query(q, where('status', '==', filters.status));
-      }
-      
+          if (filters.status) {
+            q = query(q, where('status', '==', filters.status));
+          }
+          
       // فلترة الفني يمكن عملها مباشرة (techId في المستوى الرئيسي)
-      if (filters.techId) {
-        q = query(q, where('techId', '==', filters.techId));
-      }
-      
+          if (filters.techId) {
+            q = query(q, where('techId', '==', filters.techId));
+          }
+          
       // محاولة فلترة التواريخ في الاستعلام
       try {
-        if (filters.dateFrom) {
-          q = query(q, where('visitDate', '>=', filters.dateFrom));
-        }
-        if (filters.dateTo) {
-          q = query(q, where('visitDate', '<=', filters.dateTo));
+          if (filters.dateFrom) {
+            q = query(q, where('visitDate', '>=', filters.dateFrom));
+          }
+          if (filters.dateTo) {
+            q = query(q, where('visitDate', '<=', filters.dateTo));
         }
       } catch (indexError) {
         console.warn('⚠️ Date filtering requires index, will filter manually');
-      }
+          }
 
-      const querySnapshot = await getDocs(q);
+          const querySnapshot = await getDocs(q);
       let jobs = [];
-      querySnapshot.forEach(doc => {
-        jobs.push({ id: doc.id, ...doc.data() });
-      });
-      
+          querySnapshot.forEach(doc => {
+            jobs.push({ id: doc.id, ...doc.data() });
+          });
+          
       // تصفية يدوياً حسب التاريخ إذا لزم الأمر
-      if (filters.dateFrom) {
-        const dateFrom = filters.dateFrom instanceof Date ? filters.dateFrom : new Date(filters.dateFrom);
+            if (filters.dateFrom) {
+              const dateFrom = filters.dateFrom instanceof Date ? filters.dateFrom : new Date(filters.dateFrom);
         jobs = jobs.filter(job => {
-          const jobDate = job.visitDate?.seconds ? new Date(job.visitDate.seconds * 1000) : new Date(job.visitDate);
-          return jobDate >= dateFrom;
-        });
-      }
-      
-      if (filters.dateTo) {
-        const dateTo = filters.dateTo instanceof Date ? filters.dateTo : new Date(filters.dateTo);
+                const jobDate = job.visitDate?.seconds ? new Date(job.visitDate.seconds * 1000) : new Date(job.visitDate);
+                return jobDate >= dateFrom;
+              });
+            }
+            
+            if (filters.dateTo) {
+              const dateTo = filters.dateTo instanceof Date ? filters.dateTo : new Date(filters.dateTo);
         jobs = jobs.filter(job => {
-          const jobDate = job.visitDate?.seconds ? new Date(job.visitDate.seconds * 1000) : new Date(job.visitDate);
-          return jobDate <= dateTo;
-        });
-      }
-      
+                const jobDate = job.visitDate?.seconds ? new Date(job.visitDate.seconds * 1000) : new Date(job.visitDate);
+                return jobDate <= dateTo;
+              });
+            }
+            
       // ✅ فلترة المندوب: تدعم البنية الجديدة (parts[]) والقديمة (repId مباشر)
-      if (filters.repId) {
+            if (filters.repId) {
         jobs = jobs.filter(job => {
           // البنية الجديدة: البحث في parts[]
           if (job.parts && Array.isArray(job.parts) && job.parts.length > 0) {
             return job.parts.some(part => part.repId === filters.repId);
-          }
+        }
           // البنية القديمة: repId مباشر
           return job.repId === filters.repId;
         });
       }
-      
-      // ترتيب النتائج يدوياً دائماً
-      jobs.sort((a, b) => {
-        const dateA = a.visitDate?.seconds ? new Date(a.visitDate.seconds * 1000) : new Date(a.visitDate);
-        const dateB = b.visitDate?.seconds ? new Date(b.visitDate.seconds * 1000) : new Date(b.visitDate);
-        return dateB - dateA; // ترتيب تنازلي
-      });
-      
-      console.log('✅ Maintenance jobs loaded:', jobs.length);
-      return jobs;
+        
+        // ترتيب النتائج يدوياً دائماً
+        jobs.sort((a, b) => {
+          const dateA = a.visitDate?.seconds ? new Date(a.visitDate.seconds * 1000) : new Date(a.visitDate);
+          const dateB = b.visitDate?.seconds ? new Date(b.visitDate.seconds * 1000) : new Date(b.visitDate);
+          return dateB - dateA; // ترتيب تنازلي
+        });
+        
+        console.log('✅ Maintenance jobs loaded:', jobs.length);
+        return jobs;
     } catch (error) {
       console.error('❌ Error getting maintenance jobs:', error);
       throw error;
@@ -648,10 +659,11 @@ class FirebaseDatabase {
         
         if (totalPartCost !== undefined && amountCharged !== undefined) {
           const { profit, techCommission, shopProfit } = this.computeDerived(totalPartCost, amountCharged, techPercent || 0);
-          
+        
           jobData.profit = profit;
           jobData.techCommission = techCommission;
           jobData.shopProfit = shopProfit;
+          jobData.totalPartCost = totalPartCost; // ✅ حفظ totalPartCost للتأكد من وجوده في المستقبل
         }
       }
 
@@ -902,28 +914,28 @@ class FirebaseDatabase {
             repTotals[firstRepId].techCommissionSum += (job.techCommission || 0);
             repTotals[firstRepId].shopProfitSum += (job.shopProfit || 0);
             repTotals[firstRepId].revenueSum += (job.amountCharged || 0);
-          }
+        }
         } else if (job.repId) {
           // البنية القديمة: مندوب واحد للعمل كامل
-          if (!repTotals[job.repId]) {
-            repTotals[job.repId] = {
-              repId: job.repId,
-              repName: job.repName || 'غير محدد',
-              jobsCount: 0,
-              partCostSum: 0,
-              profitSum: 0,
-              techCommissionSum: 0,
-              shopProfitSum: 0,
-              revenueSum: 0
-            };
-          }
-          
-          repTotals[job.repId].jobsCount++;
-          repTotals[job.repId].partCostSum += (job.partCost || 0);
-          repTotals[job.repId].profitSum += (job.profit || 0);
-          repTotals[job.repId].techCommissionSum += (job.techCommission || 0);
-          repTotals[job.repId].shopProfitSum += (job.shopProfit || 0);
-          repTotals[job.repId].revenueSum += (job.amountCharged || 0);
+        if (!repTotals[job.repId]) {
+          repTotals[job.repId] = {
+            repId: job.repId,
+            repName: job.repName || 'غير محدد',
+            jobsCount: 0,
+            partCostSum: 0,
+            profitSum: 0,
+            techCommissionSum: 0,
+            shopProfitSum: 0,
+            revenueSum: 0
+          };
+        }
+        
+        repTotals[job.repId].jobsCount++;
+        repTotals[job.repId].partCostSum += (job.partCost || 0);
+        repTotals[job.repId].profitSum += (job.profit || 0);
+        repTotals[job.repId].techCommissionSum += (job.techCommission || 0);
+        repTotals[job.repId].shopProfitSum += (job.shopProfit || 0);
+        repTotals[job.repId].revenueSum += (job.amountCharged || 0);
         } else {
           console.warn('⚠️ Job missing repId and parts:', job.id);
         }
@@ -956,7 +968,17 @@ class FirebaseDatabase {
           console.warn('⚠️ Job missing techId:', job);
           return;
         }
-        
+
+        // ✅ حساب totalPartCost من البنية الجديدة أو القديمة
+        let totalPartCost = 0;
+        if (job.parts && Array.isArray(job.parts) && job.parts.length > 0) {
+          totalPartCost = job.parts.reduce((sum, part) => sum + (Number(part.partCost) || 0), 0);
+        } else if (job.totalPartCost !== undefined && job.totalPartCost !== null) {
+          totalPartCost = Number(job.totalPartCost) || 0;
+        } else if (job.partCost !== undefined && job.partCost !== null) {
+          totalPartCost = Number(job.partCost) || 0; // للتوافق مع البيانات القديمة
+        }
+
         if (!techTotals[job.techId]) {
           techTotals[job.techId] = {
             techId: job.techId,
@@ -971,7 +993,7 @@ class FirebaseDatabase {
         }
         
         techTotals[job.techId].jobsCount++;
-        techTotals[job.techId].partCostSum += (job.partCost || 0);
+        techTotals[job.techId].partCostSum += totalPartCost; // ✅ استخدام totalPartCost بدلاً من partCost
         techTotals[job.techId].profitSum += (job.profit || 0);
         techTotals[job.techId].techCommissionSum += (job.techCommission || 0);
         techTotals[job.techId].shopProfitSum += (job.shopProfit || 0);

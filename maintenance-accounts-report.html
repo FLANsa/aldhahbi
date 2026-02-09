@@ -3,11 +3,18 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <link rel="manifest" href="manifest.json">
+    <meta name="theme-color" content="#2c3e50">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <meta name="apple-mobile-web-app-title" content="الركبي">
+    <link rel="apple-touch-icon" href="icons/icon-192.png">
     <title>تقرير حسابات - الركبي للاتصالات</title>
     
     <!-- Google Fonts - Cairo -->
     <link href="https://fonts.googleapis.com/css2?family=Cairo:wght@400;600;700&display=swap" rel="stylesheet">
-    
+    <link href="css/mobile.css" rel="stylesheet">
+
     <!-- Firebase Scripts -->
     <script type="module" src="js/firebase-config-cdn.js"></script>
     <script type="module" src="js/firebase-database-cdn.js"></script>
@@ -366,9 +373,9 @@
                 // انتظار Firebase إذا لم يكن جاهزاً
                 if (!window.firebaseDatabase) {
                     await new Promise(resolve => setTimeout(resolve, 300));
-                    if (!window.firebaseDatabase) {
-                        showError('قاعدة البيانات غير متاحة');
-                        return;
+                if (!window.firebaseDatabase) {
+                    showError('قاعدة البيانات غير متاحة');
+                    return;
                     }
                 }
 
@@ -718,6 +725,7 @@
                 }
                 
                 html += `
+                    <div class="table-responsive">
                     <table class="data-table">
                         <thead>
                             <tr>
@@ -748,8 +756,9 @@
                 html += `
                         </tbody>
                     </table>
+                    </div>
                 `;
-                
+
                 const balanceClass = account.balance <= 0 ? 'balance paid' : 'balance';
                 const countLabel = isRep ? 'عدد القطع' : 'عدد الأعمال';
                 const totalLabel = isRep ? 'إجمالي التكلفة' : 'إجمالي العمولات';

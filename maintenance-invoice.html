@@ -3,12 +3,19 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <link rel="manifest" href="manifest.json">
+    <meta name="theme-color" content="#2c3e50">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <meta name="apple-mobile-web-app-title" content="الركبي">
+    <link rel="apple-touch-icon" href="icons/icon-192.png">
     <title>فاتورة الصيانة - الركبي للاتصالات</title>
     
     <!-- Bootstrap CSS -->
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
     <!-- Font Awesome -->
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <link href="css/mobile.css" rel="stylesheet">
     <!-- Google Fonts - Cairo -->
     <link href="https://fonts.googleapis.com/css2?family=Cairo:wght@300;400;600;700&display=swap" rel="stylesheet">
     
@@ -437,30 +444,30 @@
             if (partsListEl) {
                 partsListEl.innerHTML = '';
                 
-                    if (currentJob.parts && Array.isArray(currentJob.parts) && currentJob.parts.length > 0) {
+                if (currentJob.parts && Array.isArray(currentJob.parts) && currentJob.parts.length > 0) {
                         // الهيكل الجديد: عرض جميع القطع بدون إظهار اسم المندوب أو تكلفة القطعة
-                        currentJob.parts.forEach((part, index) => {
-                            const partDiv = document.createElement('div');
-                            partDiv.style.margin = '8px 0';
-                            partDiv.innerHTML = `
-                                <p style="margin: 4px 0;">
-                                    <strong>القطعة ${index + 1}:</strong> ${part.partName || 'غير محدد'}
-                                </p>
-                            `;
-                            partDiv.appendChild(document.createElement('hr'));
-                            partsListEl.appendChild(partDiv);
-                        });
-                    } else if (currentJob.partName) {
-                        // الهيكل القديم: عرض القطعة الواحدة بدون إظهار اسم المندوب أو تكلفة القطعة
+                    currentJob.parts.forEach((part, index) => {
                         const partDiv = document.createElement('div');
                         partDiv.style.margin = '8px 0';
                         partDiv.innerHTML = `
                             <p style="margin: 4px 0;">
-                                <strong>القطعة:</strong> ${currentJob.partName || 'غير محدد'}
+                                <strong>القطعة ${index + 1}:</strong> ${part.partName || 'غير محدد'}
                             </p>
                         `;
+                            partDiv.appendChild(document.createElement('hr'));
                         partsListEl.appendChild(partDiv);
-                    } else {
+                    });
+                } else if (currentJob.partName) {
+                        // الهيكل القديم: عرض القطعة الواحدة بدون إظهار اسم المندوب أو تكلفة القطعة
+                    const partDiv = document.createElement('div');
+                    partDiv.style.margin = '8px 0';
+                    partDiv.innerHTML = `
+                        <p style="margin: 4px 0;">
+                            <strong>القطعة:</strong> ${currentJob.partName || 'غير محدد'}
+                        </p>
+                    `;
+                    partsListEl.appendChild(partDiv);
+                } else {
                     partsListEl.innerHTML = '<p style="margin: 4px 0;"><strong>القطعة:</strong> غير محدد</p>';
                 }
             }

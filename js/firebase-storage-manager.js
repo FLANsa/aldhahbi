@@ -103,6 +103,7 @@ class FirebaseStorageManager {
   }
 
   /**
+    this._ensureFirebase();
    * Phone management
    */
   async getPhones() {

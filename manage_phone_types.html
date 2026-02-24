@@ -1,0 +1,323 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <link rel="manifest" href="manifest.json">
+  <meta name="theme-color" content="#2c3e50">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="apple-mobile-web-app-title" content="عمر">
+  <link rel="apple-touch-icon" href="icons/icon-192.png">
+  <title>أنواع الهواتف الشائعة — عمر للاتصالات</title>
+
+  <link href="https://fonts.googleapis.com/css2?family=Cairo:wght@400;600;700&display=swap" rel="stylesheet">
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+  <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
+  <link href="css/mobile.css" rel="stylesheet">
+
+  <style>
+    body { font-family: 'Cairo', sans-serif; background-color: #f8f9fa; padding-top: 70px; }
+    .navbar { background-color: #2c3e50; position: fixed; top: 0; width: 100%; z-index: 1030; box-shadow: 0 2px 4px rgba(0,0,0,0.1); }
+    .navbar-brand, .nav-link { color: white !important; }
+    .card { margin-bottom: 20px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); }
+    .btn-primary { background-color: #2c3e50; border-color: #2c3e50; }
+    .btn-primary:hover { background-color: #1a252f; border-color: #1a252f; }
+    #alerts { margin-bottom: 1rem; }
+  </style>
+</head>
+<body>
+
+  <nav class="navbar navbar-expand-lg navbar-dark">
+    <div class="container">
+      <span class="navbar-brand">عمر للاتصالات</span>
+      <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarNav">
+        <span class="navbar-toggler-icon"></span>
+      </button>
+      <div class="collapse navbar-collapse" id="navbarNav">
+        <ul class="navbar-nav me-auto">
+          <li class="nav-item">
+            <a class="nav-link" href="dashboard.html"><i class="fas fa-tachometer-alt"></i> لوحة التحكم</a>
+          </li>
+          <li class="nav-item">
+            <a class="nav-link" href="add_new_phone.html"><i class="fas fa-mobile"></i> هاتف جديد</a>
+          </li>
+          <li class="nav-item">
+            <a class="nav-link" href="add_used_phone.html"><i class="fas fa-mobile-alt"></i> هاتف مستعمل</a>
+          </li>
+        </ul>
+      </div>
+    </div>
+  </nav>
+
+  <div class="container mt-4">
+    <div id="alerts"></div>
+
+    <div class="d-flex justify-content-between align-items-center mb-4">
+      <h2><i class="fas fa-list"></i> أنواع الهواتف الشائعة</h2>
+      <a href="dashboard.html" class="btn btn-secondary"><i class="fas fa-arrow-left"></i> العودة</a>
+    </div>
+
+    <!-- إضافة الأنواع الشائعة من القائمة المدمجة -->
+    <div class="card mb-4">
+      <div class="card-header text-white" style="background-color: #1a5f2a;">
+        <i class="fas fa-th-list"></i> إضافة الأنواع الشائعة إلى قاعدة البيانات
+      </div>
+      <div class="card-body">
+        <p class="text-muted small">إضافة كل الشركات والموديلات الشائعة (Apple, Samsung, Xiaomi, وغيرها) من القائمة المدمجة دفعة واحدة. لن تُضاف الأنواع الموجودة مسبقاً.</p>
+        <button type="button" class="btn btn-success" id="btnAddCommonTypes">
+          <i class="fas fa-download"></i> إضافة كل الأنواع الشائعة
+        </button>
+        <span id="commonTypesStatus" class="ms-2 text-muted small"></span>
+      </div>
+    </div>
+
+    <!-- إضافة نوع هاتف جديد -->
+    <div class="card mb-4">
+      <div class="card-header bg-primary text-white">
+        <i class="fas fa-plus"></i> إضافة نوع هاتف جديد
+      </div>
+      <div class="card-body">
+        <p class="text-muted small">أضف الشركة المصنعة والموديل ليظهرا في قوائم "هاتف جديد" و "هاتف مستعمل". البيانات تُحفظ في قاعدة بيانات Firebase (جدول phone_types).</p>
+        <div class="row g-3 align-items-end">
+          <div class="col-md-4">
+            <label for="newBrand" class="form-label">الشركة المصنعة</label>
+            <input type="text" class="form-control" id="newBrand" placeholder="مثال: Apple, Samsung" required>
+          </div>
+          <div class="col-md-4">
+            <label for="newModel" class="form-label">الموديل</label>
+            <input type="text" class="form-control" id="newModel" placeholder="مثال: iPhone 15 Pro" required>
+          </div>
+          <div class="col-md-4">
+            <button type="button" class="btn btn-primary w-100" id="btnAddType">
+              <i class="fas fa-plus"></i> إضافة إلى القائمة
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- قائمة أنواع الهواتف من Firebase -->
+    <div class="card">
+      <div class="card-header bg-secondary text-white d-flex justify-content-between align-items-center">
+        <span><i class="fas fa-mobile-alt"></i> القائمة الحالية (من قاعدة البيانات)</span>
+        <button type="button" class="btn btn-light btn-sm" id="btnRefresh" title="تحديث القائمة">
+          <i class="fas fa-sync-alt"></i> تحديث
+        </button>
+      </div>
+      <div class="card-body">
+        <div id="loadingTypes" class="text-center py-4 text-muted">
+          <i class="fas fa-spinner fa-spin fa-2x"></i>
+          <p class="mt-2">جاري تحميل أنواع الهواتف من قاعدة البيانات...</p>
+        </div>
+        <div id="emptyTypes" class="text-center py-4 text-muted d-none">
+          <i class="fas fa-inbox fa-2x"></i>
+          <p class="mt-2">لا توجد أنواع هواتف مسجّلة. استخدم النموذج أعلاه لإضافة أنواع شائعة.</p>
+        </div>
+        <div id="tableWrap" class="d-none">
+          <div class="table-responsive">
+            <table class="table table-hover table-striped">
+              <thead class="table-dark">
+                <tr>
+                  <th>#</th>
+                  <th>الشركة المصنعة</th>
+                  <th>الموديل</th>
+                  <th width="100">إجراء</th>
+                </tr>
+              </thead>
+              <tbody id="phoneTypesTableBody"></tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+  <script src="js/config.js"></script>
+  <script type="module" src="js/firebase-config-cdn.js"></script>
+  <script type="module" src="js/firebase-database-cdn.js"></script>
+  <script type="module" src="js/firebase-storage-manager.js"></script>
+  <script>
+    function showAlert(type, message) {
+      const wrap = document.getElementById('alerts');
+      const el = document.createElement('div');
+      el.className = 'alert alert-' + type + ' alert-dismissible fade show';
+      el.setAttribute('role', 'alert');
+      el.innerHTML = message + '<button type="button" class="btn-close" data-bs-dismiss="alert"></button>';
+      wrap.appendChild(el);
+      setTimeout(function () { el.remove(); }, 6000);
+    }
+
+    function getDb() {
+      if (!window.firebaseDatabase) {
+        showAlert('danger', 'قاعدة البيانات غير جاهزة. تأكد من اتصال Firebase (omar-telecom-682ac).');
+        return null;
+      }
+      return window.firebaseDatabase;
+    }
+
+    async function loadPhoneTypes() {
+      const db = getDb();
+      if (!db) return;
+      const loading = document.getElementById('loadingTypes');
+      const empty = document.getElementById('emptyTypes');
+      const tableWrap = document.getElementById('tableWrap');
+      const tbody = document.getElementById('phoneTypesTableBody');
+      loading.classList.remove('d-none');
+      empty.classList.add('d-none');
+      tableWrap.classList.add('d-none');
+      try {
+        const list = await db.getPhoneTypes();
+        loading.classList.add('d-none');
+        if (!list || list.length === 0) {
+          empty.classList.remove('d-none');
+          return;
+        }
+        tableWrap.classList.remove('d-none');
+        tbody.innerHTML = '';
+        list.forEach(function (item, index) {
+          const brand = item.brand || item.manufacturer || '—';
+          const model = item.model || '—';
+          const tr = document.createElement('tr');
+          tr.innerHTML =
+            '<td>' + (index + 1) + '</td>' +
+            '<td>' + escapeHtml(brand) + '</td>' +
+            '<td>' + escapeHtml(model) + '</td>' +
+            '<td><button type="button" class="btn btn-danger btn-sm btn-delete" data-id="' + escapeHtml(item.id) + '" data-brand="' + escapeHtml(brand) + '" data-model="' + escapeHtml(model) + '"><i class="fas fa-trash"></i></button></td>';
+          tbody.appendChild(tr);
+        });
+        document.querySelectorAll('.btn-delete').forEach(function (btn) {
+          btn.addEventListener('click', function () {
+            const id = btn.getAttribute('data-id');
+            const brand = btn.getAttribute('data-brand');
+            const model = btn.getAttribute('data-model');
+            if (!confirm('حذف النوع: ' + brand + ' - ' + model + '؟')) return;
+            deletePhoneType(id);
+          });
+        });
+      } catch (err) {
+        loading.classList.add('d-none');
+        console.error(err);
+        showAlert('danger', 'فشل تحميل أنواع الهواتف: ' + (err.message || err));
+      }
+    }
+
+    function escapeHtml(s) {
+      const div = document.createElement('div');
+      div.textContent = s;
+      return div.innerHTML;
+    }
+
+    async function deletePhoneType(id) {
+      const db = getDb();
+      if (!db || !db.deletePhoneTypeById) return;
+      try {
+        await db.deletePhoneTypeById(id);
+        showAlert('success', 'تم حذف النوع بنجاح.');
+        loadPhoneTypes();
+      } catch (err) {
+        console.error(err);
+        showAlert('danger', 'فشل الحذف: ' + (err.message || err));
+      }
+    }
+
+    async function addPhoneType() {
+      const brandInput = document.getElementById('newBrand');
+      const modelInput = document.getElementById('newModel');
+      const brand = (brandInput && brandInput.value || '').trim();
+      const model = (modelInput && modelInput.value || '').trim();
+      if (!brand || !model) {
+        showAlert('warning', 'يرجى إدخال الشركة المصنعة والموديل.');
+        return;
+      }
+      const db = getDb();
+      if (!db) return;
+      const btn = document.getElementById('btnAddType');
+      if (btn) {
+        btn.disabled = true;
+        btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> جاري الإضافة...';
+      }
+      try {
+        await db.addPhoneType({ brand: brand, model: model });
+        showAlert('success', 'تمت إضافة النوع بنجاح إلى قاعدة البيانات.');
+        brandInput.value = '';
+        modelInput.value = '';
+        loadPhoneTypes();
+      } catch (err) {
+        console.error(err);
+        showAlert('danger', 'فشل الإضافة: ' + (err.message || err));
+      } finally {
+        if (btn) {
+          btn.disabled = false;
+          btn.innerHTML = '<i class="fas fa-plus"></i> إضافة إلى القائمة';
+        }
+      }
+    }
+
+    async function addCommonPhoneTypes() {
+      const db = getDb();
+      if (!db) return;
+      if (typeof DEFAULT_PHONE_TYPES === 'undefined') {
+        showAlert('warning', 'القائمة الافتراضية غير متوفرة. تأكد من تحميل js/config.js');
+        return;
+      }
+      const btn = document.getElementById('btnAddCommonTypes');
+      const statusEl = document.getElementById('commonTypesStatus');
+      if (btn) { btn.disabled = true; }
+      if (statusEl) { statusEl.textContent = 'جاري التحميل...'; }
+      try {
+        const existing = await db.getPhoneTypes();
+        const existingSet = new Set((existing || []).map(function (t) {
+          return (t.brand || t.manufacturer || '').trim() + '|' + (t.model || '').trim();
+        }));
+        let added = 0;
+        let skipped = 0;
+        for (const brand of Object.keys(DEFAULT_PHONE_TYPES)) {
+          const models = DEFAULT_PHONE_TYPES[brand] || [];
+          for (let i = 0; i < models.length; i++) {
+            const model = models[i];
+            const key = brand.trim() + '|' + (model || '').trim();
+            if (existingSet.has(key)) {
+              skipped++;
+              continue;
+            }
+            await db.addPhoneType({ brand: brand.trim(), model: String(model).trim() });
+            existingSet.add(key);
+            added++;
+          }
+        }
+        if (statusEl) statusEl.textContent = 'تم: إضافة ' + added + '، تخطي ' + skipped + ' (موجود مسبقاً).';
+        showAlert('success', 'تمت إضافة الأنواع الشائعة. تم إضافة ' + added + ' نوع جديد، وتخطي ' + skipped + ' (موجود مسبقاً).');
+        loadPhoneTypes();
+      } catch (err) {
+        console.error(err);
+        showAlert('danger', 'فشل إضافة الأنواع الشائعة: ' + (err.message || err));
+        if (statusEl) statusEl.textContent = '';
+      } finally {
+        if (btn) { btn.disabled = false; }
+      }
+    }
+
+    document.getElementById('btnAddCommonTypes').addEventListener('click', addCommonPhoneTypes);
+    document.getElementById('btnAddType').addEventListener('click', addPhoneType);
+    document.getElementById('btnRefresh').addEventListener('click', loadPhoneTypes);
+    document.getElementById('newModel').addEventListener('keypress', function (e) {
+      if (e.key === 'Enter') { e.preventDefault(); addPhoneType(); }
+    });
+    document.getElementById('newBrand').addEventListener('keypress', function (e) {
+      if (e.key === 'Enter') { e.preventDefault(); document.getElementById('newModel').focus(); }
+    });
+
+    // تحميل القائمة بعد تهيئة Firebase (تأخير بسيط لضمان جاهزية firebaseDatabase)
+    function init() {
+      if (window.firebaseDatabase) {
+        loadPhoneTypes();
+      } else {
+        setTimeout(init, 200);
+      }
+    }
+    setTimeout(init, 300);
+  </script>
+</body>
+</html>

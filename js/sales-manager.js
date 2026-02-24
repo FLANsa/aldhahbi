@@ -470,7 +470,7 @@ class SalesManager {
             <div class="receipt-template">
                 <div class="receipt-header">
                     <div class="company-info">
-                        <h1>${sale.company_name} / ${CONFIG.COMPANY_INFO.nameEn || 'Omar Telecom'}</h1>
+                        <h1>${sale.company_name}</h1>
                         <p>${sale.company_address}</p>
                         <p>هاتف: ${sale.company_phone}</p>
                     </div>

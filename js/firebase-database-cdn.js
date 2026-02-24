@@ -1,5 +1,4 @@
-// Firebase Database Manager - CDN Version (Omar telecom - omar-telecom-682ac)
-// يعتمد على firebase-config-cdn.js الذي يضع window.firebaseDB
+// Firebase Database Manager for Phone Store Demo - CDN Version
 import { 
   collection, 
   doc, 
@@ -8,7 +7,6 @@ import {
   deleteDoc, 
   getDocs, 
   getDoc, 
-  limit,
   query, 
   where, 
   orderBy,
@@ -19,70 +17,36 @@ import {
 
 class FirebaseDatabase {
   constructor() {
-    this._auth = window.firebaseAuth;
-  }
-  /** دائماً نقرأ من الإعداد الحالي لضمان الربط بمشروع omar-telecom-682ac */
-  get db() {
-    if (!window.firebaseDB) {
-      throw new Error('قاعدة البيانات غير جاهزة. تأكد من تحميل firebase-config-cdn.js قبل firebase-database-cdn.js (مشروع omar-telecom-682ac).');
-    }
-    return window.firebaseDB;
-  }
-  get auth() {
-    return this._auth;
+    this.db = window.firebaseDB;
+    this.auth = window.firebaseAuth;
   }
 
-  // ===== عداد رقم الباركود (فريد على مستوى المشروع) - مشروع omar-telecom-682ac =====
+  // ===== عداد رقم الباركود (فريد على مستوى المشروع) =====
   /** يُرجع الرقم التالي الفريد للهاتف (مثل "000001") من عداد في Firebase لضمان عدم التكرار. */
   async getNextPhoneNumber() {
-    const db = window.firebaseDB;
-    if (!db || typeof db !== 'object') {
-      throw new Error('قاعدة البيانات غير جاهزة. تأكد من تحميل firebase-config-cdn.js ومشروع omar-telecom-682ac.');
-    }
-    const counterRef = doc(db, 'counters', 'phones');
-    const phonesColl = collection(db, 'phones');
-    if (!counterRef || !counterRef.path) {
-      throw new Error('مرجع العداد غير صالح (omar-telecom-682ac).');
-    }
-
-    const counterSnap = await getDoc(counterRef);
-    if (counterSnap.exists()) {
-      const nextNum = await runTransaction(db, async (transaction) => {
-        const refInTx = doc(db, 'counters', 'phones');
-        if (!refInTx || !refInTx.path) throw new Error('مرجع العداد داخل المعاملة غير صالح.');
-        const snap = await transaction.get(refInTx);
-        const current = snap.exists() ? (snap.data().lastPhoneNumber || 0) : 0;
-        const next = current + 1;
-        transaction.update(refInTx, { lastPhoneNumber: next });
-        return next;
-      });
-      return String(nextNum).padStart(6, '0');
-    }
-
-    let maxN = 0;
-    const phonesSnap = await getDocs(query(phonesColl));
-    phonesSnap.forEach((d) => {
-      const raw = d.data().phone_number;
-      const n = typeof raw === 'number' ? raw : parseInt(String(raw || '0'), 10);
-      if (!isNaN(n)) maxN = Math.max(maxN, n);
-    });
-    const next = maxN + 1;
-    const finalNum = await runTransaction(db, async (transaction) => {
-      const refInTx = doc(db, 'counters', 'phones');
-      if (!refInTx || !refInTx.path) throw new Error('مرجع العداد داخل المعاملة غير صالح.');
-      const snap = await transaction.get(refInTx);
-      let valueToSet;
-      if (!snap.exists()) {
-        valueToSet = next;
-        transaction.set(refInTx, { lastPhoneNumber: valueToSet });
+    const counterRef = doc(this.db, 'counters', 'phones');
+    const phonesRef = collection(this.db, 'phones');
+    const nextNum = await runTransaction(this.db, async (transaction) => {
+      const counterSnap = await transaction.get(counterRef);
+      let next;
+      if (!counterSnap.exists()) {
+        const phonesSnap = await transaction.get(phonesRef);
+        let maxN = 0;
+        phonesSnap.forEach((d) => {
+          const raw = d.data().phone_number;
+          const n = typeof raw === 'number' ? raw : parseInt(String(raw || '0'), 10);
+          if (!isNaN(n)) maxN = Math.max(maxN, n);
+        });
+        next = maxN + 1;
+        transaction.set(counterRef, { lastPhoneNumber: next });
       } else {
-        const current = snap.data().lastPhoneNumber || 0;
-        valueToSet = Math.max(next, current + 1);
-        transaction.update(refInTx, { lastPhoneNumber: valueToSet });
+        const current = counterSnap.data().lastPhoneNumber || 0;
+        next = current + 1;
+        transaction.update(counterRef, { lastPhoneNumber: next });
       }
-      return valueToSet;
+      return next;
     });
-    return String(finalNum).padStart(6, '0');
+    return String(nextNum).padStart(6, '0');
   }
 
   /** التحقق من وجود هاتف بنفس رقم الباركود (للمقارنة الموحدة نص/عدد). */
@@ -396,18 +360,6 @@ class FirebaseDatabase {
       return true;
     } catch (error) {
       console.error('❌ Error deleting phone type:', error);
-      throw error;
-    }
-  }
-
-  /** حذف نوع هاتف بواسطة معرف المستند (للاستخدام من واجهة إدارة الأنواع) */
-  async deletePhoneTypeById(docId) {
-    try {
-      await deleteDoc(doc(this.db, 'phone_types', docId));
-      console.log('✅ Phone type deleted by ID:', docId);
-      return true;
-    } catch (error) {
-      console.error('❌ Error deleting phone type by ID:', error);
       throw error;
     }
   }
@@ -1145,31 +1097,11 @@ class FirebaseDatabase {
   }
 }
 
-// انتظار جاهزية الإعداد (firebase-config-cdn.js) ثم إنشاء مدير قاعدة البيانات
-function whenFirebaseDBReady() {
-  return new Promise((resolve, reject) => {
-    if (window.firebaseDB) return resolve();
-    let attempts = 0;
-    const maxAttempts = 100; // 5 ثوانٍ
-    const interval = setInterval(() => {
-      attempts++;
-      if (window.firebaseDB) {
-        clearInterval(interval);
-        resolve();
-      } else if (attempts >= maxAttempts) {
-        clearInterval(interval);
-        reject(new Error('انتهت المهلة: لم يتم تحميل إعداد Firebase (omar-telecom-682ac). تأكد من وجود سكربت firebase-config-cdn.js قبل هذا الملف.'));
-      }
-    }, 50);
-  });
-}
+// إنشاء instance واحد للاستخدام في جميع أنحاء التطبيق
+window.firebaseDatabase = new FirebaseDatabase();
 
-whenFirebaseDBReady()
-  .then(() => {
-    window.firebaseDatabase = new FirebaseDatabase();
-    console.log('📌 مدير قاعدة البيانات مرتبط بمشروع:', window.firebaseDB?.app?.options?.projectId || 'omar-telecom-682ac');
-    return window.firebaseDatabase.initializeDefaultData();
-  })
+// تهيئة البيانات الافتراضية عند تحميل Firebase
+window.firebaseDatabase.initializeDefaultData()
   .then(() => {
     console.log('🔥 Firebase Database Manager initialized successfully!');
   })

@@ -8,7 +8,6 @@ const CONFIG = {
     VAT_RATE: 0.15, // 15% VAT rate
     COMPANY_INFO: {
         name: "عمر للاتصالات",
-        nameEn: "Omar Telecom",
         address: "الرياض، المملكة العربية السعودية",
         phone: "0531100725"
     },

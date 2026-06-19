@@ -191,9 +191,9 @@
   <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
   
   <!-- Firebase -->
-  <script type="module" src="js/firebase-config-cdn.js"></script>
-  <script type="module" src="js/firebase-database-cdn.js"></script>
-  <script type="module" src="js/firebase-storage-manager.js"></script>
+  <script type="module" src="js/firebase-config-cdn.js?v=20260619-firestore-phone-save-v4"></script>
+  <script type="module" src="js/firebase-database-cdn.js?v=20260619-firestore-phone-save-v4"></script>
+  <script type="module" src="js/firebase-storage-manager.js?v=20260619-firestore-phone-save-v4"></script>
 
   <script>
 
@@ -365,10 +365,88 @@
       }catch(e){ console.error(e); alert('❌ حدث خطأ في الحذف.'); }
     }
 
-    function generatePhoneNumber(){
+    function generatePhoneNumberLocal(){
       let last = localStorage.getItem('lastDeviceNumber')||'0';
       const next = (parseInt(last,10)+1); localStorage.setItem('lastDeviceNumber', String(next));
       return String(next).padStart(6,'0');
+    }
+
+    function isFirebaseReadyForPhones(){
+      return !!(
+        window.firebaseDatabase &&
+        typeof window.firebaseDatabase.addPhone === 'function' &&
+        (window.firebaseDB || window.firebaseDatabase.db)
+      );
+    }
+
+    async function getNextPhoneNumberForAdd(){
+      if (window.firebaseDatabase && typeof window.firebaseDatabase.getNextPhoneNumber === 'function') {
+        try {
+          return await window.firebaseDatabase.getNextPhoneNumber();
+        } catch (error) {
+          console.error('❌ تعذر توليد رقم الباركود من Firestore:', error);
+          if (isFirebaseReadyForPhones()) {
+            throw error;
+          }
+        }
+      }
+      return generatePhoneNumberLocal();
+    }
+
+    function savePhoneLocalLastResort(phoneData){
+      console.warn('⚠️ Firebase غير متاح، حفظ الهاتف في localStorage كحل أخير فقط.');
+      const arr = JSON.parse(localStorage.getItem('phones')||'[]');
+      phoneData.id = Date.now().toString();
+      arr.push(phoneData);
+      localStorage.setItem('phones', JSON.stringify(arr));
+      return phoneData.id;
+    }
+
+    async function addPhoneFirestoreFirst(phoneData){
+      if (isFirebaseReadyForPhones()) {
+        const id = await window.firebaseDatabase.addPhone(phoneData);
+        console.log('✅ Firestore phones add verified:', { id, phone_number: phoneData.phone_number });
+        return id;
+      }
+
+      if (
+        window.storage &&
+        typeof window.storage.refreshFirebaseAvailability === 'function' &&
+        window.storage.refreshFirebaseAvailability()
+      ) {
+        const id = await window.storage.addPhone(phoneData);
+        if (id) return id;
+        throw new Error('تعذر حفظ الهاتف في Firestore');
+      }
+
+      return savePhoneLocalLastResort(phoneData);
+    }
+
+    async function updatePhoneFirestoreFirst(phoneId, phoneData){
+      if (isFirebaseReadyForPhones() && typeof window.firebaseDatabase.updatePhone === 'function') {
+        await window.firebaseDatabase.updatePhone(phoneId, phoneData);
+        console.log('✅ Firestore phones update verified:', { id: phoneId, phone_number: phoneData.phone_number });
+        return true;
+      }
+
+      if (
+        window.storage &&
+        typeof window.storage.refreshFirebaseAvailability === 'function' &&
+        window.storage.refreshFirebaseAvailability()
+      ) {
+        const updated = await window.storage.updatePhone(phoneId, phoneData);
+        if (updated) return true;
+        throw new Error('تعذر تحديث الهاتف في Firestore');
+      }
+
+      const arr = JSON.parse(localStorage.getItem('phones')||'[]');
+      const index = arr.findIndex(p => p.id === phoneId || p.phone_number === phoneId);
+      if (index !== -1) {
+        arr[index] = { ...arr[index], ...phoneData };
+        localStorage.setItem('phones', JSON.stringify(arr));
+        return true;
+      }
+      return false;
     }
 
     async function savePhoneToFirebase(){
@@ -389,7 +467,7 @@
           return false;
         }
 
-        const phone_number = generatePhoneNumber();
+        const phone_number = await getNextPhoneNumberForAdd();
         const purchase_price = parseArabicNumber(document.getElementById('purchase_price').value);
         const selling_price = parseArabicNumber(document.getElementById('selling_price').value);
 
@@ -418,29 +496,13 @@
         if(!phoneData.brand || !phoneData.model || !phoneData.serial_number){ alert('يرجى ملء جميع الحقول المطلوبة'); return false; }
         if(phoneData.purchase_price<=0 || phoneData.selling_price<=0){ alert('يرجى إدخال أسعار صحيحة'); return false; }
 
-        // handoff سريع للملصق
-        localStorage.setItem('lastAddedPhone', JSON.stringify(phoneData));
-
         let savedOK=false;
         
         // التحقق من وجود معرف التعديل
         if (window.editingPhoneId) {
           console.log('🔄 تحديث الهاتف:', window.editingPhoneId);
           phoneData.id = window.editingPhoneId;
-          
-          if(window.storage && window.storage.isFirebaseAvailable){
-            // تحديث في Firebase
-            savedOK = await window.storage.updatePhone(window.editingPhoneId, phoneData);
-          } else {
-            // تحديث في localStorage
-            const arr = JSON.parse(localStorage.getItem('phones')||'[]');
-            const index = arr.findIndex(p => p.id === window.editingPhoneId || p.phone_number === window.editingPhoneId);
-            if (index !== -1) {
-              arr[index] = { ...arr[index], ...phoneData };
-              localStorage.setItem('phones', JSON.stringify(arr));
-              savedOK = true;
-            }
-          }
+          savedOK = await updatePhoneFirestoreFirst(window.editingPhoneId, phoneData);
           
           if(savedOK){
             showAlert('success', 'تم تحديث الهاتف بنجاح!');
@@ -452,18 +514,11 @@
           }
         } else {
           // إضافة هاتف جديد
-          if(window.storage && window.storage.isFirebaseAvailable){
-            const id = await window.storage.addPhone(phoneData);
-            savedOK = !!id;
-          }else{
-            const arr = JSON.parse(localStorage.getItem('phones')||'[]'); 
-            phoneData.id=Date.now().toString(); 
-            arr.push(phoneData);
-            localStorage.setItem('phones', JSON.stringify(arr)); 
-            savedOK=true;
-          }
+          const id = await addPhoneFirestoreFirst(phoneData);
+          savedOK = !!id;
           
           if(savedOK){
+            localStorage.setItem('lastAddedPhone', JSON.stringify(phoneData));
             const shouldPrint = confirm('✅ تم إضافة الهاتف!\n\nهل تريد طباعة الباركود؟');
             if(shouldPrint){ window.location.href = `print_barcode.html?phone_number=${encodeURIComponent(phoneData.phone_number)}`; }
             return true;

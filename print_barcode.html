@@ -33,6 +33,7 @@
     .sticker-barcode canvas{ width:100%; height:100%; image-rendering:crisp-edges; image-rendering:pixelated; display:block; }
     .rows{ flex:0 0 auto; display:flex; flex-direction:row; gap:0.5mm; justify-content:space-between; align-items:flex-start; margin:0; }
     .row2{ display:flex; flex:1 1 0; min-width:0; flex-direction:column; align-items:center; text-align:center; line-height:1; }
+    .row2[hidden]{ display:none !important; }
     .label{ color:#111; font-weight:900; font-size:1.85mm; line-height:1; text-align:center; white-space:nowrap; margin-bottom:0.5mm; }
     .value{ color:#000; font-weight:900; font-size:3.25mm; line-height:0.95; text-align:center; white-space:nowrap; }
     .actions{ display:flex; gap:10px; flex-wrap:wrap; }
@@ -66,7 +67,7 @@
                 <div class="label">رقم الجهاز</div>
                 <div class="value" id="phone-number">جاري التحميل...</div>
               </div>
-              <div class="row2">
+              <div class="row2" id="battery-row">
                 <div class="label">نسبة البطارية</div>
                 <div class="value" id="battery-level">جاري التحميل...</div>
               </div>
@@ -150,22 +151,23 @@
     const model = phone?.model || phone?.phone_model || '';
     const modelLine = [brand, model].filter(Boolean).join(' ').trim() || '-';
     const memory = phone?.phone_memory || phone?.memory || phone?.storage || '-';
-    let battery = '-';
-    if (phone?.battery_level != null && phone.battery_level !== '') {
-      battery = String(phone.battery_level);
-    } else if (phone?.age != null) {
-      battery = String(phone.age); // تم الحفظ من صفحة المستعمل كـ battery_level أيضاً
-    } else if (phone?.condition === 'new') {
-      battery = '100';
-    }
-    return { phone_number, modelLine, memory, battery };
+    const type = String(phone?.condition || phone?.phone_type || '').trim().toLowerCase();
+    const isNewPhone = type === 'new' || type === 'جديد';
+    const rawBattery = phone?.battery_level != null && phone.battery_level !== ''
+      ? phone.battery_level
+      : phone?.age;
+    const battery = rawBattery != null && rawBattery !== '' ? String(rawBattery) : '-';
+    const showBattery = !isNewPhone && battery !== '-';
+    return { phone_number, modelLine, memory, battery, showBattery };
   }
 
-  function fillSticker({phone_number, modelLine, memory, battery}){
+  function fillSticker({phone_number, modelLine, memory, battery, showBattery = false}){
     document.getElementById('phone-number').textContent = phone_number || '-';
     document.getElementById('phone-model').textContent = modelLine || '-';
     document.getElementById('phone-memory').textContent = memory || '-';
-    document.getElementById('battery-level').textContent = battery || '-';
+    const batteryRow = document.getElementById('battery-row');
+    batteryRow.hidden = !showBattery;
+    document.getElementById('battery-level').textContent = showBattery ? (battery || '-') : '';
     
     generateBarcode(phone_number || '-');
   }
@@ -229,7 +231,7 @@
         return;
       }else{
         // If not found anywhere, still show the code the user passed
-        fillSticker({ phone_number: pn, modelLine:'-', memory:'-', battery:'-' });
+        fillSticker({ phone_number: pn, modelLine:'-', memory:'-' });
         alert('لم يتم العثور على بيانات الهاتف في القاعدة، تم استخدام رقم الجهاز فقط.');
         return;
       }
@@ -250,7 +252,7 @@
       const next = (parseInt(last,10)+1); localStorage.setItem('lastDeviceNumber', String(next));
       return String(next).padStart(6,'0');
     })();
-    fillSticker({ phone_number: generated, modelLine:'-', memory:'32GB', battery:'100' });
+    fillSticker({ phone_number: generated, modelLine:'-', memory:'32GB' });
   }
 
   document.addEventListener('DOMContentLoaded', loadPhoneData);

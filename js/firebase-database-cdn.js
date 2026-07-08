@@ -16,10 +16,55 @@ import {
   runTransaction
 } from 'https://www.gstatic.com/firebasejs/10.14.1/firebase-firestore.js';
 
+// كاش قراءة مشترك: يمنع إعادة جلب المجموعات كاملة عند كل تنقل بين الصفحات.
+// الكاش لكل تبويب (sessionStorage) وينتهي بعد TTL، ويُبطل فور أي كتابة على المجموعة.
+const COLLECTION_CACHE_TTL_MS = 5 * 60 * 1000;
+const collectionMemoryCache = new Map();
+
 class FirebaseDatabase {
   constructor() {
     this.db = window.firebaseDB || null;
     this.auth = window.firebaseAuth || null;
+  }
+
+  cacheKey(collectionName) {
+    return `fs_cache_${collectionName}`;
+  }
+
+  readCollectionCache(collectionName) {
+    const memory = collectionMemoryCache.get(collectionName);
+    if (memory && Date.now() - memory.t < COLLECTION_CACHE_TTL_MS) {
+      return memory.rows.slice();
+    }
+    try {
+      const stored = JSON.parse(sessionStorage.getItem(this.cacheKey(collectionName)));
+      if (stored && Date.now() - stored.t < COLLECTION_CACHE_TTL_MS && Array.isArray(stored.rows)) {
+        collectionMemoryCache.set(collectionName, stored);
+        return stored.rows.slice();
+      }
+    } catch (error) {
+      // كاش تالف أو sessionStorage غير متاح — نتجاهل ونقرأ من Firestore
+    }
+    return null;
+  }
+
+  writeCollectionCache(collectionName, rows) {
+    const entry = { t: Date.now(), rows };
+    collectionMemoryCache.set(collectionName, entry);
+    try {
+      sessionStorage.setItem(this.cacheKey(collectionName), JSON.stringify(entry));
+    } catch (error) {
+      // تجاوز حصة sessionStorage — الكاش في الذاكرة يكفي لهذا التبويب
+    }
+  }
+
+  invalidateCollectionCache(collectionName) {
+    collectionMemoryCache.delete(collectionName);
+    try {
+      sessionStorage.removeItem(this.cacheKey(collectionName));
+    } catch (error) {
+      // sessionStorage غير متاح
+    }
   }
 
   getDb() {
@@ -47,8 +92,13 @@ class FirebaseDatabase {
   }
 
   async getCollectionRows(collectionName) {
+    const cached = this.readCollectionCache(collectionName);
+    if (cached) return cached;
+
     const snapshot = await getDocs(this.collectionRef(collectionName));
-    return this.toArray(snapshot);
+    const rows = this.toArray(snapshot);
+    this.writeCollectionCache(collectionName, rows);
+    return rows;
   }
 
   toDate(value, endOfDay = false) {
@@ -226,6 +276,7 @@ class FirebaseDatabase {
       createdAt: serverTimestamp(),
       updatedAt: serverTimestamp()
     });
+    this.invalidateCollectionCache('phones');
     console.log('✅ Phone saved to Firestore phones collection:', docRef.id, 'phone_number:', phoneNumber);
     return docRef.id;
   }
@@ -254,6 +305,7 @@ class FirebaseDatabase {
       { field: 'phone_number', values: [String(phoneId), parseInt(String(phoneId), 10)] }
     ]);
     await updateDoc(ref, { ...phoneData, updatedAt: serverTimestamp() });
+    this.invalidateCollectionCache('phones');
     return true;
   }
 
@@ -262,6 +314,7 @@ class FirebaseDatabase {
       { field: 'phone_number', values: [String(phoneId), parseInt(String(phoneId), 10)] }
     ]);
     await deleteDoc(ref);
+    this.invalidateCollectionCache('phones');
     return true;
   }
 
@@ -271,6 +324,7 @@ class FirebaseDatabase {
       createdAt: serverTimestamp(),
       updatedAt: serverTimestamp()
     });
+    this.invalidateCollectionCache('accessories');
     return docRef.id;
   }
 
@@ -302,6 +356,7 @@ class FirebaseDatabase {
       { field: 'accessory_number', values: [String(accessoryId), parseInt(String(accessoryId), 10)] }
     ]);
     await updateDoc(ref, { ...accessoryData, updatedAt: serverTimestamp() });
+    this.invalidateCollectionCache('accessories');
     return true;
   }
 
@@ -311,6 +366,7 @@ class FirebaseDatabase {
       { field: 'accessory_number', values: [String(accessoryId), parseInt(String(accessoryId), 10)] }
     ]);
     await deleteDoc(ref);
+    this.invalidateCollectionCache('accessories');
     return true;
   }
 
@@ -320,13 +376,18 @@ class FirebaseDatabase {
       createdAt: serverTimestamp(),
       updatedAt: serverTimestamp()
     });
+    this.invalidateCollectionCache('sales');
     return docRef.id;
   }
 
   async getSales() {
+    const cached = this.readCollectionCache('sales');
+    if (cached) return cached;
+
     try {
       const snapshot = await getDocs(query(this.collectionRef('sales'), orderBy('createdAt', 'desc')));
       const sales = this.toArray(snapshot);
+      this.writeCollectionCache('sales', sales);
       console.log('💰 Retrieved sales:', sales.length);
       return sales;
     } catch (error) {
@@ -344,11 +405,13 @@ class FirebaseDatabase {
 
   async updateSale(saleId, saleData) {
     await updateDoc(this.docRef('sales', saleId), { ...saleData, updatedAt: serverTimestamp() });
+    this.invalidateCollectionCache('sales');
     return true;
   }
 
   async deleteSale(saleId) {
     await deleteDoc(this.docRef('sales', saleId));
+    this.invalidateCollectionCache('sales');
     return true;
   }
 
@@ -358,6 +421,7 @@ class FirebaseDatabase {
       createdAt: serverTimestamp(),
       updatedAt: serverTimestamp()
     });
+    this.invalidateCollectionCache('accessory_categories');
     return docRef.id;
   }
 
@@ -372,6 +436,7 @@ class FirebaseDatabase {
       query(this.collectionRef('accessory_categories'), where('arabic_name', '==', categoryName))
     );
     await Promise.all(snapshot.docs.map((item) => deleteDoc(item.ref)));
+    this.invalidateCollectionCache('accessory_categories');
     return true;
   }
 
@@ -381,6 +446,7 @@ class FirebaseDatabase {
       createdAt: serverTimestamp(),
       updatedAt: serverTimestamp()
     });
+    this.invalidateCollectionCache('phone_types');
     return docRef.id;
   }
 
@@ -395,6 +461,7 @@ class FirebaseDatabase {
       query(this.collectionRef('phone_types'), where('brand', '==', brand), where('model', '==', model))
     );
     await Promise.all(snapshot.docs.map((item) => deleteDoc(item.ref)));
+    this.invalidateCollectionCache('phone_types');
     return true;
   }
 
@@ -445,6 +512,7 @@ class FirebaseDatabase {
       createdAt: serverTimestamp(),
       updatedAt: serverTimestamp()
     });
+    this.invalidateCollectionCache('reps');
     return docRef.id;
   }
 
@@ -456,11 +524,13 @@ class FirebaseDatabase {
 
   async updateRep(repId, repData) {
     await updateDoc(this.docRef('reps', repId), { ...repData, updatedAt: serverTimestamp() });
+    this.invalidateCollectionCache('reps');
     return true;
   }
 
   async deleteRep(repId) {
     await deleteDoc(this.docRef('reps', repId));
+    this.invalidateCollectionCache('reps');
     return true;
   }
 
@@ -472,6 +542,7 @@ class FirebaseDatabase {
       createdAt: serverTimestamp(),
       updatedAt: serverTimestamp()
     });
+    this.invalidateCollectionCache('technicians');
     return docRef.id;
   }
 
@@ -483,11 +554,13 @@ class FirebaseDatabase {
 
   async updateTechnician(techId, techData) {
     await updateDoc(this.docRef('technicians', techId), { ...techData, updatedAt: serverTimestamp() });
+    this.invalidateCollectionCache('technicians');
     return true;
   }
 
   async deleteTechnician(techId) {
     await deleteDoc(this.docRef('technicians', techId));
+    this.invalidateCollectionCache('technicians');
     return true;
   }
 
@@ -534,25 +607,15 @@ class FirebaseDatabase {
       createdAt: serverTimestamp(),
       updatedAt: serverTimestamp()
     });
+    this.invalidateCollectionCache('maintenanceJobs');
     return docRef.id;
   }
 
   async getMaintenanceJobs(filters = {}) {
-    let jobs;
-    try {
-      if (filters.status) {
-        const snapshot = await getDocs(query(this.collectionRef('maintenanceJobs'), where('status', '==', filters.status)));
-        jobs = this.toArray(snapshot);
-      } else if (filters.techId) {
-        const snapshot = await getDocs(query(this.collectionRef('maintenanceJobs'), where('techId', '==', filters.techId)));
-        jobs = this.toArray(snapshot);
-      } else {
-        jobs = await this.getCollectionRows('maintenanceJobs');
-      }
-    } catch (error) {
-      console.warn('⚠️ Falling back to full maintenanceJobs read:', error);
-      jobs = await this.getCollectionRows('maintenanceJobs');
-    }
+    // القراءة دائماً عبر الكاش المشترك؛ الفلترة أدناه تتم محلياً على أي حال،
+    // فالاستعلامات المفلترة المباشرة كانت تتجاوز الكاش وتكرر القراءات في صفحات التقارير.
+    const jobsRows = await this.getCollectionRows('maintenanceJobs');
+    let jobs = jobsRows;
 
     jobs = jobs.filter((job) => {
       if (filters.status && job.status !== filters.status) return false;
@@ -605,11 +668,13 @@ class FirebaseDatabase {
       ...nextData,
       updatedAt: serverTimestamp()
     });
+    this.invalidateCollectionCache('maintenanceJobs');
     return true;
   }
 
   async deleteMaintenanceJob(jobId) {
     await deleteDoc(this.docRef('maintenanceJobs', jobId));
+    this.invalidateCollectionCache('maintenanceJobs');
     return true;
   }
 
@@ -620,6 +685,7 @@ class FirebaseDatabase {
       createdAt: serverTimestamp(),
       updatedAt: serverTimestamp()
     });
+    this.invalidateCollectionCache('settlements');
     return docRef.id;
   }
 
@@ -641,6 +707,7 @@ class FirebaseDatabase {
       notes,
       updatedAt: serverTimestamp()
     });
+    this.invalidateCollectionCache('settlements');
     return true;
   }
 
@@ -650,25 +717,13 @@ class FirebaseDatabase {
       createdAt: serverTimestamp(),
       updatedAt: serverTimestamp()
     });
+    this.invalidateCollectionCache('payments');
     return docRef.id;
   }
 
   async getPayments(filters = {}) {
-    let payments;
-    try {
-      if (filters.entityId) {
-        const snapshot = await getDocs(query(this.collectionRef('payments'), where('entityId', '==', filters.entityId)));
-        payments = this.toArray(snapshot);
-      } else if (filters.entityType) {
-        const snapshot = await getDocs(query(this.collectionRef('payments'), where('entityType', '==', filters.entityType)));
-        payments = this.toArray(snapshot);
-      } else {
-        payments = await this.getCollectionRows('payments');
-      }
-    } catch (error) {
-      console.warn('⚠️ Falling back to full payments read:', error);
-      payments = await this.getCollectionRows('payments');
-    }
+    // القراءة دائماً عبر الكاش المشترك؛ الفلترة المحلية أدناه تغطي entityId/entityType.
+    let payments = await this.getCollectionRows('payments');
 
     payments = payments.filter((payment) => {
       if (filters.entityType && payment.entityType !== filters.entityType) return false;
@@ -685,11 +740,13 @@ class FirebaseDatabase {
       ...paymentData,
       updatedAt: serverTimestamp()
     });
+    this.invalidateCollectionCache('payments');
     return true;
   }
 
   async deletePayment(paymentId) {
     await deleteDoc(this.docRef('payments', paymentId));
+    this.invalidateCollectionCache('payments');
     return true;
   }
 
@@ -792,11 +849,17 @@ class FirebaseDatabase {
       { name: 'other', arabic_name: 'أخرى', description: 'فئات أخرى' }
     ];
 
+    // فحص البذر مرة واحدة لكل متصفح: قراءة accessory_categories عند كل تحميل صفحة
+    // كانت تستهلك الحصة، وإعادة البذر عند فشل القراءة كانت تُنشئ فئات مكررة.
     try {
+      if (localStorage.getItem('default_categories_seeded') === '1') {
+        return;
+      }
       const existingCategories = await this.getAccessoryCategories();
       if (existingCategories.length === 0) {
         await Promise.all(defaultCategories.map((category) => this.addAccessoryCategory(category)));
       }
+      localStorage.setItem('default_categories_seeded', '1');
       console.log('🔥 Firebase Database Manager initialized successfully!');
     } catch (error) {
       console.error('❌ Error initializing Firebase Database:', error);

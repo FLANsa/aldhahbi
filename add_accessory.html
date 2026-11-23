@@ -128,7 +128,7 @@
                       </button>
                     </div>
                     <input type="hidden" id="barcode_id">
-                    <small class="form-text text-muted">الباركود المرجعي يبقى ACC-YYYYMMDD-NNNN، ويُحفظ رمز مسح قصير (8 رموز) في barcode_id للطباعة والمسح.</small>
+                    <small class="form-text text-muted">الباركود المرجعي يبقى ACC-YYYYMMDD-NNNN، ويُحفظ رمز مسح رقمي من 8 أرقام في barcode_id للطباعة والمسح.</small>
                     <small class="form-text text-muted" id="barcode_id_hint" style="display:none;"></small>
                   </div>
                 </div>
@@ -360,21 +360,20 @@
       return true;
     }
 
-    // رمز مسح قصير (8 رموز) لملصق 40×25mm: يبدأ بـ AC لتمييزه عن أرقام الهواتف
+    // رمز مسح رقمي من 8 أرقام: أسهل قراءة على الماسح، ومميز عن أرقام الهواتف المكوّنة من 6 خانات
     function generateShortAccessoryId() {
-      const alphabet = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
       let stored = [];
       try { stored = JSON.parse(localStorage.getItem('issuedAccessoryIds') || '[]'); } catch (e) { stored = []; }
       const used = new Set(Array.isArray(stored) ? stored : []);
       let id;
       do {
-        const bytes = new Uint8Array(6);
+        let n = 0;
         if (window.crypto && crypto.getRandomValues) {
-          crypto.getRandomValues(bytes);
+          n = crypto.getRandomValues(new Uint32Array(1))[0];
         } else {
-          for (let i = 0; i < bytes.length; i++) bytes[i] = Math.floor(Math.random() * 256);
+          n = Math.floor(Math.random() * 4294967296);
         }
-        id = 'AC' + Array.from(bytes, b => alphabet[b % alphabet.length]).join('');
+        id = String(10000000 + (n % 90000000));
       } while (used.has(id));
       used.add(id);
       try { localStorage.setItem('issuedAccessoryIds', JSON.stringify([...used].slice(-500))); } catch (e) {}
@@ -536,11 +535,6 @@
         if (!accessoryData.barcode) {
           showAlert('warning', 'يرجى إدخال باركود للإكسسوار أو توليد باركود فريد');
           return false;
-        }
-
-        // الأكواد الطويلة تُحفظ كما أدخلها المستخدم، لكن رمز المسح القصير هو ما يُطبع
-        if (accessoryData.barcode.length > 8) {
-          showAlert('warning', `الباركود المرجعي "${accessoryData.barcode}" طويل لملصق 40×25mm؛ سيُستخدم رمز المسح القصير ${barcodeId} في الطباعة.`);
         }
 
         // طباعة البيانات المراد حفظها للتشخيص

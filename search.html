@@ -524,7 +524,7 @@
                         <button type="button" class="btn btn-sm btn-outline-primary" onclick="editAccessory('${a.id}')" title="تعديل">
                           <i class="fas fa-edit"></i>
                         </button>
-                        ${a.barcode ? `<button type="button" class="btn btn-sm btn-outline-success" onclick="goPrintAccessoryBarcode('${a.barcode}')" title="طباعة الباركود">
+                        ${(a.barcode_id || a.barcode) ? `<button type="button" class="btn btn-sm btn-outline-success" onclick="goPrintAccessoryBarcode('${a.barcode_id || a.barcode}')" title="طباعة الباركود">
                           <i class="fas fa-barcode"></i>
                         </button>` : ''}
                         <button type="button" class="btn btn-sm btn-outline-danger" onclick="deleteAccessory('${a.id}')" title="حذف">
@@ -822,7 +822,9 @@
       document.getElementById('search_term').value = barcode;
       
       if (type) {
-        document.getElementById('search_type').value = type === 'accessory' ? 'accessories' : 'phones';
+        document.getElementById('search_type').value =
+          type === 'accessory' || type === 'accessories' ? 'accessories' :
+          type === 'all' ? 'all' : 'phones';
       }
       
       // تنفيذ البحث تلقائياً

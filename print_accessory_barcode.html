@@ -29,7 +29,6 @@
     /* نفس مقاس وتوزيع ملصق الهاتف حرفياً: 40×25mm بلا حدود تؤثر على الالتقاط */
     .sticker{ width:40mm; height:25mm; background:#fff; box-sizing:border-box; display:flex; flex-direction:column; overflow:hidden; padding:2.15mm 3.4mm 1.15mm; color:#000; }
     .shop{ flex:0 0 auto; text-align:center; font-weight:900; font-size:3.75mm; line-height:0.95; white-space:nowrap; margin:0 0 0.9mm; }
-    .accessory-name{ flex:0 0 auto; direction:rtl; text-align:center; font-weight:800; font-size:2.45mm; line-height:1; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; margin:0 0 1.05mm; }
     .sticker-barcode{ flex:0 0 auto; height:6.35mm; display:flex; align-items:stretch; justify-content:center; margin:0 0 0.85mm; }
     .sticker-barcode canvas{ width:100%; height:100%; image-rendering:crisp-edges; image-rendering:pixelated; display:block; }
     .rows{ flex:0 0 auto; display:flex; flex-direction:row; gap:0.5mm; justify-content:space-between; align-items:flex-start; margin:0; }
@@ -60,7 +59,6 @@
         <div class="sticker-preview">
           <div id="sticker" class="sticker">
             <div class="shop">الركبي للاتصالات</div>
-            <div class="accessory-name" id="accessory-name">جاري التحميل...</div>
             <div class="sticker-barcode"><canvas id="barcode-canvas"></canvas></div>
             <div class="rows">
               <div class="row2">
@@ -132,8 +130,8 @@
     const { jsPDF } = window.jspdf;
     const doc = new jsPDF({ orientation:'landscape', unit:'mm', format:[STICKER_MM.w, STICKER_MM.h] });
     doc.addImage(imgData, 'PNG', 0, 0, STICKER_MM.w, STICKER_MM.h, undefined, 'FAST');
-    const accessoryName = document.getElementById('accessory-name').textContent || 'accessory';
-    doc.save(`barcode_${accessoryName.replace(/[^a-zA-Z0-9]/g, '_')}.pdf`);
+    const fileCode = String(currentBarcode || 'accessory').replace(/[^a-zA-Z0-9]/g, '_');
+    doc.save(`barcode_${fileCode}.pdf`);
   }
 
   async function printPdf(){
@@ -150,10 +148,9 @@
   }
 
   function valuesFromAccessory(accessory){
-    const name = accessory?.name || accessory?.arabic_name || 'غير محدد';
     const price = accessory?.selling_price || 0;
     const priceText = price ? `${price} ريال` : '-';
-    return { name, priceText };
+    return { priceText };
   }
 
   // تصغير محدود للخط حتى لا يُقصّ السعر داخل 25mm
@@ -166,8 +163,7 @@
     }
   }
 
-  function fillSticker({name, priceText}){
-    document.getElementById('accessory-name').textContent = name || '-';
+  function fillSticker({priceText}){
     const priceEl = document.getElementById('selling-price');
     priceEl.textContent = priceText || '-';
     fitValue(priceEl);
@@ -255,7 +251,7 @@
         return;
       }else{
         // If not found anywhere, still show the code the user passed
-        fillSticker({ name: 'إكسسوار غير محدد', priceText: '-' });
+        fillSticker({ priceText: '-' });
         alert('لم يتم العثور على بيانات الإكسسوار في القاعدة، تم استخدام الباركود فقط.');
         return;
       }
@@ -274,7 +270,7 @@
     // Finally, generate a new short label if nothing provided
     const generated = generateShortAccessoryId();
     currentBarcode = generated;
-    fillSticker({ name: 'إكسسوار جديد', priceText: '0 ريال' });
+    fillSticker({ priceText: '0 ريال' });
   }
 
   document.addEventListener('DOMContentLoaded', loadAccessoryData);

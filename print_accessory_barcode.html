@@ -36,7 +36,6 @@
     .row2{ display:flex; flex:1 1 0; min-width:0; flex-direction:column; align-items:center; text-align:center; line-height:1; }
     .label{ color:#111; font-weight:900; font-size:1.85mm; line-height:1; text-align:center; white-space:nowrap; margin-bottom:0.5mm; }
     .value{ color:#000; font-weight:900; font-size:3.25mm; line-height:0.95; text-align:center; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; max-width:100%; }
-    .barcode-warning{ margin:0 0 14px; padding:10px 12px; border-radius:8px; background:#fff3cd; color:#856404; font-size:0.9rem; }
     .actions{ display:flex; gap:10px; flex-wrap:wrap; }
     .btn{ appearance:none; border:0; padding:10px 14px; border-radius:10px; cursor:pointer; font-weight:700; font-family:inherit; }
     .btn-primary{ background:#10b981; color:#fff; }
@@ -58,7 +57,6 @@
         </div>
       </div>
       <div class="card-body">
-        <div id="barcode-warning" class="alert alert-warning barcode-warning no-print" style="display:none;"></div>
         <div class="sticker-preview">
           <div id="sticker" class="sticker">
             <div class="shop">الركبي للاتصالات</div>
@@ -90,15 +88,6 @@
   function generateBarcode(code){
     const canvas = document.getElementById('barcode-canvas');
     const value = String(code||'').trim() || '-';
-
-    // الأكواد الطويلة تجعل أشرطة CODE128 رفيعة على ملصق 40×25mm؛ نُحذّر بوضوح دون تشويه الرسم
-    const warning = document.getElementById('barcode-warning');
-    if(value.length > 8){
-      warning.textContent = `الباركود "${value}" أطول من 8 رموز، وقد يصعب مسحه على ملصق 40×25mm. استخدم رمز مسح قصيراً من barcode_id إذا كان مخزّناً للسجل.`;
-      warning.style.display = 'block';
-    }else{
-      warning.style.display = 'none';
-    }
 
     if(!canvas || !window.JsBarcode) return;
     // نفس إعدادات صفحة الهاتف تماماً: حاشية صغيرة ثابتة وارتفاع مطابق لمنطقة الملصق

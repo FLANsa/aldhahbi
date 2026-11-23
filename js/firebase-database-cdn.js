@@ -350,8 +350,13 @@ class FirebaseDatabase {
     const numericValue = parseInt(normalized, 10);
     if (!Number.isNaN(numericValue)) values.push(numericValue);
 
+    // دعم رمز المسح القصير والباركود المرجعي القديم بصيغته المضغوطة
+    const compact = normalized.toUpperCase().replace(/[^A-Z0-9]/g, '');
+    if (compact && !values.includes(compact)) values.push(compact);
+
     const found =
       (await this.findFirstByField('accessories', 'barcode', values)) ||
+      (await this.findFirstByField('accessories', 'barcode_id', values)) ||
       (await this.findFirstByField('accessories', 'accessory_number', values));
 
     return found ? { id: found.id, ...found.data() } : null;

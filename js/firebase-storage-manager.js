@@ -222,6 +222,26 @@ class FirebaseStorageManager {
     return this.getItem(CONFIG.STORAGE_KEYS.ACCESSORIES, []);
   }
 
+  // بحث مباشر عن إكسسوار بالباركود: يستقبل الرمز القصير والمرجعي والصيغة القديمة المضغوطة
+  async getAccessoryByBarcode(barcode) {
+    if (this.refreshFirebaseAvailability() && this.firebaseDB && typeof this.firebaseDB.getAccessoryByBarcode === 'function') {
+      try {
+        const one = await this.firebaseDB.getAccessoryByBarcode(barcode);
+        if (one) return one;
+      } catch (error) {
+        console.warn('Firestore barcode lookup failed:', error);
+      }
+    }
+
+    const code = String(barcode || '').trim();
+    if (!code) return null;
+    const compact = code.toUpperCase().replace(/[^A-Z0-9]/g, '');
+    const all = await this.getAccessories();
+    const list = Array.isArray(all) ? all : Object.values(all || {});
+    return list.find(a => [a.barcode, a.barcode_id, a.accessory_number]
+      .some(v => v !== null && v !== undefined && [code, compact].indexOf(String(v).trim()) !== -1)) || null;
+  }
+
   async setAccessories(accessories) {
     if (this.refreshFirebaseAvailability()) {
       console.log('Firebase mode: accessories are managed individually');

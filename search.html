@@ -291,6 +291,13 @@
       
       // البحث في كلا النسختين (عربية وإنجليزية)
       const searchTerms = [term.toLowerCase(), englishTerm.toLowerCase(), arabicTerm.toLowerCase()];
+      // الباركود القديم له صيغتان: ACC-YYYYMMDD-NNNN و ACCYYYYMMDDNNNN؛ نولّد كلتاهما من أي إدخال
+      for(const candidate of [term, englishTerm]){
+        const compact = String(candidate).toUpperCase().replace(/[^A-Z0-9]/g, '');
+        if(/^ACC\d{12}$/.test(compact)){
+          searchTerms.push(`ACC-${compact.slice(3,11)}-${compact.slice(11)}`.toLowerCase(), compact.toLowerCase());
+        }
+      }
       const uniqueTerms = [...new Set(searchTerms)]; // إزالة التكرار
       
       console.log('🔤 الرموز المطلوب البحث عنها:', uniqueTerms);

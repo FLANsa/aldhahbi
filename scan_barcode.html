@@ -75,10 +75,16 @@
     
     // تحديد نوع المنتج من الباركود إذا لم يتم تحديده
     let detectedType = productType;
-    if (code.startsWith('ACC-')) {
+    // إكسسوار: المرجع ACC-... والصيغة القديمة المضغوطة ACCYYYYMMDDNNNN ورمز المسح ACXXXXXX
+    if (code.startsWith('ACC-') || /^ACC\d{12}$/i.test(code) || /^AC[0-9A-Z]{6}$/i.test(code)) {
       detectedType = 'accessory';
     } else if (code.startsWith('PHONE') || code.match(/^\d+$/)) {
       detectedType = productType.includes('phone') ? productType : 'phone_new';
+    } else if (productType === 'accessory') {
+      detectedType = 'accessory';
+    } else {
+      // باركود مخصص غير معروف: نبحث في الهواتف والإكسسوارات معاً بدل افتراض أنه هاتف
+      detectedType = 'all';
     }
     
     // توجيه المستخدم للصفحة المناسبة

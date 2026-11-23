@@ -127,7 +127,9 @@
                         <i class="fas fa-barcode"></i> توليد
                       </button>
                     </div>
-                    <small class="form-text text-muted">يمكنك إدخال باركود مخصص أو توليد باركود فريد تلقائياً</small>
+                    <input type="hidden" id="barcode_id">
+                    <small class="form-text text-muted">الباركود المرجعي يبقى ACC-YYYYMMDD-NNNN، ويُحفظ رمز مسح قصير (8 رموز) في barcode_id للطباعة والمسح.</small>
+                    <small class="form-text text-muted" id="barcode_id_hint" style="display:none;"></small>
                   </div>
                 </div>
               </div>
@@ -358,7 +360,35 @@
       return true;
     }
 
-    // توليد باركود فريد للإكسسوار
+    // رمز مسح قصير (8 رموز) لملصق 40×25mm: يبدأ بـ AC لتمييزه عن أرقام الهواتف
+    function generateShortAccessoryId() {
+      const alphabet = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+      let stored = [];
+      try { stored = JSON.parse(localStorage.getItem('issuedAccessoryIds') || '[]'); } catch (e) { stored = []; }
+      const used = new Set(Array.isArray(stored) ? stored : []);
+      let id;
+      do {
+        const bytes = new Uint8Array(6);
+        if (window.crypto && crypto.getRandomValues) {
+          crypto.getRandomValues(bytes);
+        } else {
+          for (let i = 0; i < bytes.length; i++) bytes[i] = Math.floor(Math.random() * 256);
+        }
+        id = 'AC' + Array.from(bytes, b => alphabet[b % alphabet.length]).join('');
+      } while (used.has(id));
+      used.add(id);
+      try { localStorage.setItem('issuedAccessoryIds', JSON.stringify([...used].slice(-500))); } catch (e) {}
+      return id;
+    }
+
+    function updateBarcodeIdHint() {
+      const id = document.getElementById('barcode_id').value.trim();
+      const hint = document.getElementById('barcode_id_hint');
+      hint.textContent = id ? `رمز المسح القصير: ${id}` : '';
+      hint.style.display = id ? 'block' : 'none';
+    }
+
+    // توليد باركود مرجعي للإكسسوار + رمز مسح قصير مستقل
     function generateBarcode() {
       // التحقق من وجود باركود مخصص أولاً
       const currentBarcode = document.getElementById('barcode').value.trim();
@@ -369,33 +399,39 @@
           return; // إلغاء العملية
         }
       }
-      
+
       const today = new Date();
-      const dateStr = today.getFullYear().toString() + 
-                     (today.getMonth() + 1).toString().padStart(2, '0') + 
+      const dateStr = today.getFullYear().toString() +
+                     (today.getMonth() + 1).toString().padStart(2, '0') +
                      today.getDate().toString().padStart(2, '0');
-      
+
       // الحصول على آخر رقم تسلسلي لهذا التاريخ
       let lastSerial = localStorage.getItem(`lastAccessorySerial_${dateStr}`) || '0';
       const nextSerial = (parseInt(lastSerial) + 1).toString().padStart(4, '0');
-      
+
       // حفظ الرقم التسلسلي الجديد
       localStorage.setItem(`lastAccessorySerial_${dateStr}`, nextSerial);
-      
+
       const barcode = `ACC-${dateStr}-${nextSerial}`;
       document.getElementById('barcode').value = barcode;
-      
-      showAlert('success', `تم توليد باركود جديد: ${barcode}`);
+      document.getElementById('barcode_id').value = generateShortAccessoryId();
+      updateBarcodeIdHint();
+
+      showAlert('success', `تم توليد باركود مرجعي: ${barcode} — رمز المسح: ${document.getElementById('barcode_id').value}`);
     }
 
-    // طباعة الباركود
+    // طباعة الباركود: نمرّر رمز المسح القصير، ونرجع للمرجع القديم عند غيابه
     function printBarcode() {
-      const barcode = document.getElementById('barcode').value.trim();
+      let saved = null;
+      try { saved = JSON.parse(localStorage.getItem('lastAddedAccessory') || 'null'); } catch (e) {}
+      const barcode = document.getElementById('barcode_id').value.trim() ||
+                      document.getElementById('barcode').value.trim() ||
+                      (saved && (saved.barcode_id || saved.barcode)) || '';
       if (!barcode) {
         showAlert('warning', 'يرجى إدخال باركود أو توليد باركود أولاً');
         return;
       }
-      
+
       // فتح صفحة طباعة الباركود
       const printUrl = `print_accessory_barcode.html?barcode=${encodeURIComponent(barcode)}`;
       window.open(printUrl, '_blank');
@@ -448,12 +484,19 @@
         const sellingPriceRaw = document.getElementById('selling_price').value;
         const quantityRaw = document.getElementById('quantity').value;
         
+        const rawBarcode = document.getElementById('barcode').value.trim();
+        const shortId = document.getElementById('barcode_id').value.trim();
+        const barcodeId = shortId ||
+          (rawBarcode.length <= 8 ? rawBarcode.replace(/[^a-zA-Z0-9]/g, '') : generateShortAccessoryId());
+        document.getElementById('barcode_id').value = barcodeId;
+        updateBarcodeIdHint();
+
         const accessoryData = {
           name: document.getElementById('name').value.trim(),
           arabic_name: document.getElementById('name').value.trim(), // استخدام نفس الاسم
           category: document.getElementById('category').value,
-          barcode: document.getElementById('barcode').value.trim(),
-          barcode_id: document.getElementById('barcode').value.trim().replace(/[^a-zA-Z0-9]/g, ''), // للبحث بدون رموز
+          barcode: rawBarcode, // الرقم المرجعي ACC-YYYYMMDD-NNNN أو الباركود المخصص
+          barcode_id: barcodeId, // رمز المسح القصير المستخدم في CODE128 والبحث
           quantity: parseInt(convertArabicToEnglishNumbers(quantityRaw)) || 0,
           quantity_in_stock: parseInt(convertArabicToEnglishNumbers(quantityRaw)) || 0, // إضافة quantity_in_stock
           purchase_price: parseArabicNumber(purchasePriceRaw),
@@ -495,6 +538,11 @@
           return false;
         }
 
+        // الأكواد الطويلة تُحفظ كما أدخلها المستخدم، لكن رمز المسح القصير هو ما يُطبع
+        if (accessoryData.barcode.length > 8) {
+          showAlert('warning', `الباركود المرجعي "${accessoryData.barcode}" طويل لملصق 40×25mm؛ سيُستخدم رمز المسح القصير ${barcodeId} في الطباعة.`);
+        }
+
         // طباعة البيانات المراد حفظها للتشخيص
         console.log('📦 بيانات الأكسسوار المراد حفظها:', accessoryData);
 
@@ -506,6 +554,7 @@
             console.log('✅ تم حفظ الأكسسوار في Firebase بنجاح! ID:', accessoryId);
             console.log('📂 الفئة:', accessoryData.category);
             console.log('🏷️ الباركود:', accessoryData.barcode);
+            try { localStorage.setItem('lastAddedAccessory', JSON.stringify({ ...accessoryData, id: accessoryId })); } catch (e) {}
             showAlert('success', `تم إضافة الأكسسوار "${accessoryData.name}" بنجاح!`);
             
             // إظهار زر طباعة الباركود
@@ -524,6 +573,7 @@
           accessoryData.id = Date.now().toString();
           accessories.push(accessoryData);
           localStorage.setItem('accessories', JSON.stringify(accessories));
+          try { localStorage.setItem('lastAddedAccessory', JSON.stringify(accessoryData)); } catch (e) {}
           console.log('✅ تم حفظ الأكسسوار في localStorage');
           console.log('🏷️ الباركود:', accessoryData.barcode);
           showAlert('success', 'تم إضافة الأكسسوار بنجاح! (محلي)');
@@ -577,7 +627,15 @@
       
       // إعداد دعم الأرقام العربية
       setupArabicNumberSupport();
-      
+
+      // الباركود المخصص القصير يُستخدم كما أدخله المستخدم، والطويل يحتفظ برمز مسح قصير منفصل
+      document.getElementById('barcode').addEventListener('input', function () {
+        const value = this.value.trim();
+        const idField = document.getElementById('barcode_id');
+        idField.value = (value && value.length <= 8) ? value.replace(/[^a-zA-Z0-9]/g, '') : '';
+        updateBarcodeIdHint();
+      });
+
       // ربط نموذج الإرسال بدالة الحفظ
       const form = document.querySelector('form');
       if (form) {

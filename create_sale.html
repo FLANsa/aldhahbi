@@ -981,6 +981,18 @@
         window.location.href = 'index.html';
       }
     }
+
+    // تحديث بيانات المبيعات عند العودة للصفحة من الـ bfcache (لا نمس السلة)
+    window.addEventListener('pageshow', (event) => {
+      if (!event.persisted) return;
+      const refresh = (window.storage && window.storage.isFirebaseAvailable)
+        ? loadDataFromFirebase()
+        : loadDataFromLocalStorage();
+      Promise.resolve(refresh).then(() => {
+        updateProductTypeDropdown();
+        loadProducts();
+      });
+    });
   </script>
 
   <!-- Navigation Script -->

@@ -359,6 +359,89 @@ class FirebaseStorageManager {
     return false;
   }
 
+  async returnSale(saleId, returnedAt) {
+    if (this.refreshFirebaseAvailability()) {
+      // لا نبتلع الخطأ هنا: واجهة الاسترجاع يجب أن تعرف أن العملية فشلت
+      return this.firebaseDB.returnSale(saleId, returnedAt);
+    }
+
+    // LocalStorage fallback — نحسب الزيادات أولاً، ثم نعيد القراءة عند الكتابة لتفادي تكرار تبويب آخر
+    const sales = JSON.parse(localStorage.getItem(CONFIG.STORAGE_KEYS.SALES) || '[]');
+    const saleIndex = sales.findIndex(s => s && s.id === saleId);
+    if (saleIndex === -1) {
+      throw new Error('الفاتورة غير موجودة، حدّث الصفحة وأعد المحاولة');
+    }
+
+    const sale = sales[saleIndex];
+    if (sale.returned === true || sale.status === 'مسترجعة') {
+      return { alreadyReturned: true, restocked: [], skipped: [] };
+    }
+
+    const deltas = new Map(); // rawId -> { id, name, quantity }
+    for (const item of (Array.isArray(sale.items) ? sale.items : [])) {
+      if (!item || item.type === 'phone') continue;
+      const rawId = item.id ?? item.sku ?? item.barcode;
+      if (rawId === undefined || rawId === null || rawId === '') continue;
+
+      const quantity = Number(item.quantity) || 0;
+      if (quantity <= 0) continue;
+
+      const key = String(rawId);
+      const existing = deltas.get(key);
+      if (existing) {
+        existing.quantity += quantity;
+      } else {
+        deltas.set(key, { id: key, name: item.name || item.product_name || '', quantity });
+      }
+    }
+
+    // إعادة قراءة الفاتورة والمخزون مباشرة قبل الكتابة: منع التكرار وتطبيق الزيادة على أحدث كمية
+    const latestSalesRaw = localStorage.getItem(CONFIG.STORAGE_KEYS.SALES);
+    const latestSales = JSON.parse(latestSalesRaw || '[]');
+    const latestIndex = latestSales.findIndex(s => s && s.id === saleId);
+    if (latestIndex === -1 || latestSales[latestIndex].returned === true || latestSales[latestIndex].status === 'مسترجعة') {
+      return { alreadyReturned: true, restocked: [], skipped: [] };
+    }
+
+    const accessories = JSON.parse(localStorage.getItem(CONFIG.STORAGE_KEYS.ACCESSORIES) || '[]');
+    const restocked = [];
+    const skipped = [];
+
+    for (const delta of deltas.values()) {
+      const index = accessories.findIndex(a =>
+        a && (a.id === delta.id || a.sku === delta.id || a.barcode === delta.id || a.accessory_number === delta.id)
+      );
+
+      if (index === -1) {
+        skipped.push({ id: delta.id, name: delta.name, reason: 'الأكسسوار غير موجود' });
+        continue;
+      }
+
+      const acc = accessories[index];
+      const currentStock = Number(acc.quantity_in_stock ?? acc.quantity ?? 0);
+      const newStock = currentStock + delta.quantity;
+      accessories[index] = { ...acc, quantity_in_stock: newStock, quantity: newStock };
+      restocked.push({ id: String(acc.id || delta.id), name: acc.name || delta.name || '', added: delta.quantity });
+    }
+
+    latestSales[latestIndex] = { ...latestSales[latestIndex], returned: true, status: 'مسترجعة', returned_at: returnedAt };
+
+    // نكتب تعليم الفاتورة أولاً (هو مانع التكرار)، ثم المخزون؛ عند فشل الثاني نحاول التراجع عن الأول
+    localStorage.setItem(CONFIG.STORAGE_KEYS.SALES, JSON.stringify(latestSales));
+    try {
+      localStorage.setItem(CONFIG.STORAGE_KEYS.ACCESSORIES, JSON.stringify(accessories));
+    } catch (error) {
+      try {
+        localStorage.setItem(CONFIG.STORAGE_KEYS.SALES, latestSalesRaw);
+      } catch (rollbackError) {
+        throw new Error('تعذّر إكمال تحديث المخزون، تحقّق من حالة الفاتورة قبل إعادة المحاولة');
+      }
+      throw error;
+    }
+
+    return { alreadyReturned: false, restocked, skipped };
+  }
+
   async deleteSale(saleId) {
     if (this.refreshFirebaseAvailability()) {
       try {

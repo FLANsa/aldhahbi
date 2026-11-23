@@ -808,6 +808,11 @@
       await updateDashboard();
     }, 5 * 60 * 1000);
   });
+
+  // تحديث لوحة التحكم عند العودة للصفحة من الـ bfcache
+  window.addEventListener('pageshow', (event) => {
+    if (event.persisted) updateDashboard();
+  });
 </script>
 
 <!-- Navigation Script -->

@@ -825,6 +825,11 @@
     }
   });
 
+  // تحديث البيانات عند العودة للصفحة من الـ bfcache
+  window.addEventListener('pageshow', (event) => {
+    if (event.persisted) loadAllData();
+  });
+
   // ===== طباعة الباركود =====
   function goPrintBarcode(rawCode) {
     const code = String(rawCode || '').trim();

@@ -552,6 +552,11 @@
       updateInventorySummary();
     }, 5 * 60 * 1000);
   });
+
+  // تحديث ملخص المخزون عند العودة للصفحة من الـ bfcache
+  window.addEventListener('pageshow', (event) => {
+    if (event.persisted) updateInventorySummary();
+  });
 </script>
 
 <!-- Navigation Script -->

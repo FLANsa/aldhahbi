@@ -377,7 +377,7 @@
       <button class="btn btn-success btn-lg me-3" id="printBtn" onclick="printReceipt()">
         <i class="fas fa-print"></i> طباعة الفاتورة
       </button>
-      <button class="btn btn-danger btn-lg me-3" onclick="returnCurrentSale()">
+      <button class="btn btn-danger btn-lg me-3" id="returnSaleBtn" onclick="returnCurrentSale()">
         <i class="fas fa-undo"></i> استرجاع الفاتورة
       </button>
       <a href="create_sale.html" class="btn btn-primary btn-lg">
@@ -461,6 +461,7 @@
 
 <script>
   let currentSale = null;
+  let returnInProgress = false;
 
   // ✅ دالة تُرجع تاريخ اليوم بصيغة YYYY/MM/DD بالأرقام اللاتينية وبتوقيت الرياض
   function todayRiyadh() {
@@ -1033,69 +1034,141 @@
     }
   }
 
-  // استرجاع الفاتورة الحالية: رفع مخزون الأكسسوارات وتحديث حالة البيع
-  async function returnCurrentSale() {
-    try {
-      if (!currentSale || !currentSale.id) {
-        showAlert('warning', 'لا توجد فاتورة محددة');
-        return;
+  // مسار احتياطي عند غياب manager التخزين: نحسب الزيادات ثم نكتب دفعة واحدة مع منع التكرار
+  function returnSaleLocally(saleId, returnedAt) {
+    const sales = JSON.parse(localStorage.getItem('sales') || '[]');
+    const saleIndex = sales.findIndex(s => s && s.id === saleId);
+    if (saleIndex === -1) {
+      throw new Error('الفاتورة غير موجودة، حدّث الصفحة وأعد المحاولة');
+    }
+
+    const sale = sales[saleIndex];
+    if (sale.returned === true || sale.status === 'مسترجعة') {
+      return { alreadyReturned: true, restocked: [], skipped: [] };
+    }
+
+    const deltas = new Map();
+    for (const item of (Array.isArray(sale.items) ? sale.items : [])) {
+      if (!item || item.type === 'phone') continue;
+      const rawId = item.id ?? item.sku ?? item.barcode;
+      if (rawId === undefined || rawId === null || rawId === '') continue;
+
+      const quantity = Number(item.quantity) || 0;
+      if (quantity <= 0) continue;
+
+      const key = String(rawId);
+      const existing = deltas.get(key);
+      if (existing) {
+        existing.quantity += quantity;
+      } else {
+        deltas.set(key, { id: key, name: item.name || item.product_name || '', quantity });
       }
-      if (currentSale.returned === true) {
+    }
+
+    // إعادة القراءة قبل الكتابة: لا نكتب إن سبق تبويب آخر وسم الفاتورة
+    const latestSalesRaw = localStorage.getItem('sales');
+    const latestSales = JSON.parse(latestSalesRaw || '[]');
+    const latestIndex = latestSales.findIndex(s => s && s.id === saleId);
+    if (latestIndex === -1 || latestSales[latestIndex].returned === true || latestSales[latestIndex].status === 'مسترجعة') {
+      return { alreadyReturned: true, restocked: [], skipped: [] };
+    }
+
+    const accessories = JSON.parse(localStorage.getItem('accessories') || '[]');
+    const restocked = [];
+    const skipped = [];
+
+    for (const delta of deltas.values()) {
+      const index = accessories.findIndex(a =>
+        a && (a.id === delta.id || a.sku === delta.id || a.barcode === delta.id || a.accessory_number === delta.id)
+      );
+
+      if (index === -1) {
+        skipped.push({ id: delta.id, name: delta.name, reason: 'الأكسسوار غير موجود' });
+        continue;
+      }
+
+      const acc = accessories[index];
+      const currentStock = Number(acc.quantity_in_stock ?? acc.quantity ?? 0);
+      const newStock = currentStock + delta.quantity;
+      accessories[index] = { ...acc, quantity_in_stock: newStock, quantity: newStock };
+      restocked.push({ id: String(acc.id || delta.id), name: acc.name || delta.name || '', added: delta.quantity });
+    }
+
+    latestSales[latestIndex] = { ...latestSales[latestIndex], returned: true, status: 'مسترجعة', returned_at: returnedAt };
+
+    // تعليم الفاتورة أولاً (مانع التكرار)، ثم المخزون، مع محاولة تراجع عند فشل المخزون
+    localStorage.setItem('sales', JSON.stringify(latestSales));
+    try {
+      localStorage.setItem('accessories', JSON.stringify(accessories));
+    } catch (error) {
+      try {
+        localStorage.setItem('sales', latestSalesRaw);
+      } catch (rollbackError) {
+        throw new Error('تعذّر إكمال تحديث المخزون، تحقّق من حالة الفاتورة قبل إعادة المحاولة');
+      }
+      throw error;
+    }
+
+    return { alreadyReturned: false, restocked, skipped };
+  }
+
+  // استرجاع الفاتورة الحالية: عملية ذرّية تُعلّم الفاتورة وتُرجع المخزون معاً
+  async function returnCurrentSale() {
+    if (!currentSale || !currentSale.id) {
+      showAlert('warning', 'لا توجد فاتورة محددة');
+      return;
+    }
+    if (currentSale.returned === true || currentSale.status === 'مسترجعة') {
+      showAlert('info', 'تم استرجاع هذه الفاتورة مسبقاً');
+      return;
+    }
+    if (returnInProgress) return;
+    if (!confirm('هل تريد استرجاع كامل الفاتورة وإرجاع المنتجات إلى المخزون؟')) return;
+
+    returnInProgress = true;
+    const saleId = currentSale.id;
+    const returnedAt = new Date().toISOString();
+    const returnBtn = document.getElementById('returnSaleBtn');
+    const originalBtnHtml = returnBtn ? returnBtn.innerHTML : '';
+
+    if (returnBtn) {
+      returnBtn.disabled = true;
+      returnBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> جارٍ الاسترجاع...';
+    }
+
+    try {
+      const result = (window.storage && typeof window.storage.returnSale === 'function')
+        ? await window.storage.returnSale(saleId, returnedAt)
+        : returnSaleLocally(saleId, returnedAt);
+
+      currentSale = { ...currentSale, returned: true, status: 'مسترجعة', returned_at: returnedAt };
+      // العرض واجهة فقط؛ لا نجعله يحوّل استرجاعاً نجح إلى رسالة فشل
+      try {
+        await displaySaleData();
+      } catch (displayError) {
+        console.error('⚠️ تعذّر تحديث عرض الفاتورة بعد الاسترجاع:', displayError);
+      }
+
+      if (result && result.alreadyReturned) {
         showAlert('info', 'تم استرجاع هذه الفاتورة مسبقاً');
         return;
       }
-      if (!confirm('هل تريد استرجاع كامل الفاتورة وإرجاع المنتجات إلى المخزون؟')) return;
 
-      // استرجاع مخزون الأكسسوارات + لا نلمس الهاتف (يصبح متاحاً تلقائياً لأننا نستبعد المبيعات المسترجعة)
-      let accessories = [];
-      if (window.storage && window.storage.isFirebaseAvailable) {
-        accessories = await window.storage.getAccessories();
-      } else {
-        accessories = JSON.parse(localStorage.getItem('accessories') || '[]');
-      }
-
-      for (const item of (currentSale.items || [])) {
-        if (item.type && item.type !== 'phone') {
-          const acc = accessories.find(a => a.id === item.id || a.sku === item.id);
-          if (acc) {
-            const currentStock = Number(acc.quantity_in_stock ?? acc.quantity ?? 0);
-            const newStock = currentStock + (Number(item.quantity) || 0);
-            acc.quantity_in_stock = newStock;
-            acc.quantity = newStock;
-            if (window.storage && window.storage.isFirebaseAvailable) {
-              await window.storage.updateAccessory?.(acc.id, acc);
-            } else {
-              const updatedAccessories = accessories.map(a => (a.id === acc.id ? acc : a));
-              localStorage.setItem('accessories', JSON.stringify(updatedAccessories));
-            }
-          }
-        }
-      }
-
-      // تحديث سجل البيع كـ مسترجعة
-      const updatedSale = {
-        ...currentSale,
-        returned: true,
-        status: 'مسترجعة',
-        returned_at: new Date().toISOString()
-      };
-
-      if (window.storage && window.storage.isFirebaseAvailable) {
-        await window.storage.updateSale?.(currentSale.id, { returned: true, status: 'مسترجعة', returned_at: new Date().toISOString() });
-      } else {
-        const sales = JSON.parse(localStorage.getItem('sales') || '[]');
-        const idx = sales.findIndex(s => s.id === currentSale.id);
-        if (idx !== -1) {
-          sales[idx] = { ...sales[idx], ...updatedSale };
-          localStorage.setItem('sales', JSON.stringify(sales));
-        }
-      }
-
-      currentSale = updatedSale;
-      displaySaleData();
       showAlert('success', 'تم استرجاع الفاتورة وإرجاع المخزون بنجاح');
+
+      if (result && Array.isArray(result.skipped) && result.skipped.length > 0) {
+        const names = result.skipped.map(s => s.name || s.id).join('، ');
+        showAlert('warning', `تم الاسترجاع، لكن لم يتم إرجاع: ${names}`);
+      }
     } catch (e) {
-      showAlert('danger', 'حدث خطأ أثناء الاسترجاع');
+      const reason = (e && e.message) ? e.message : 'خطأ غير معروف';
+      showAlert('danger', `لم يكتمل الاسترجاع: ${reason} — لم يتم تأكيد تغيير الفاتورة ولا المخزون، أعد المحاولة`);
+    } finally {
+      returnInProgress = false;
+      if (returnBtn) {
+        returnBtn.disabled = false;
+        returnBtn.innerHTML = originalBtnHtml;
+      }
     }
   }
 
